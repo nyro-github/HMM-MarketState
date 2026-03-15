@@ -16,7 +16,7 @@ def load_and_prepare_data(filepath):
     df = pd.read_csv(filepath, index_col='open_time', parse_dates=True)
     
     # Selected Features out of the DataFrame (Phase 2)
-    features = ['log_return', 'volatility', 'volume_trend']
+    features = ['log_return', 'volatility', 'trend_distance']
     X = df[features].values
     
     # Phase 3: Data Scaling
@@ -27,7 +27,7 @@ def load_and_prepare_data(filepath):
     
     return X_scaled, df, scaler, features
 
-def train_hmm(X, n_components=8, n_iter=1000, random_state=42):
+def train_hmm(X, n_components=4, n_iter=1000, random_state=42):
     """
     Phase 2: Model Architecture
     Phase 3: Model Fitting
@@ -64,8 +64,8 @@ def main():
     # 1. Load Data & Scale
     X_scaled, df, scaler, feature_names = load_and_prepare_data(data_path)
     
-    # 2. Train Model
-    model = train_hmm(X_scaled, n_components=8)
+    # 2. Train Model with 4 states
+    model = train_hmm(X_scaled, n_components=4)
     
     # 3. Save Model & Scaler for Interpretations/Predictions later
     model_path = os.path.join(model_dir, 'market_state_hmm.pkl')

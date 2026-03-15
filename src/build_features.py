@@ -44,26 +44,23 @@ def process_features(df, resample_freq='1h'):
     
     print("Calculating features...")
     
-    # 1. Log Returns
+    # 1. Log Returns (Fast response direction)
     df_resampled['log_return'] = np.log(df_resampled['close'] / df_resampled['close'].shift(1))
     
     # 2. Realized Volatility 
-    # Let's use a 24-period rolling window (e.g., 24 hours if resampled to 1h)
-    volatility_window = 24
+    # Shortened to a rolling 48-hour window (12 periods if resampled to 4h)
+    volatility_window = 12
     df_resampled['volatility'] = df_resampled['log_return'].rolling(window=volatility_window).std()
     
-    # 3. Volume Trend
-    # Using the ratio of current volume to its rolling 24-period mean
-    volume_window = 24
-    df_resampled['volume_ma'] = df_resampled['volume'].rolling(window=volume_window).mean()
-    # Adding a small epsilon to avoid division by zero
-    epsilon = 1e-8
-    df_resampled['volume_trend'] = df_resampled['volume'] / (df_resampled['volume_ma'] + epsilon)
+    # 3. Macro Trend Indicator (Distance from 100 SMA)
+    # Using a 100-period Simple Moving Average on the 4H chart (roughly 16.6 days)
+    sma_window = 100
+    df_resampled['sma_100'] = df_resampled['close'].rolling(window=sma_window).mean()
+    # Log distance from SMA (positive means Bull Trend, negative means Bear Trend)
+    df_resampled['trend_distance'] = np.log(df_resampled['close'] / df_resampled['sma_100'])
     
-    # Drop rows with NaNs originating from rolling windows and shifts
+    # Drop rows with NaNs originating from the long 200-period SMA requirement
     df_resampled.dropna(inplace=True)
-    
-    # Optional: Keep only the features that will be used by the HMM, but we keep OHLCV for context/plotting
     
     return df_resampled
 
@@ -76,12 +73,12 @@ def main():
         return
         
     df = load_data(db_path)
-    df_features = process_features(df, resample_freq='1h') # Capital 'h' triggers a warning in new pandas, I'll use lowercase 'h'
+    df_features = process_features(df, resample_freq='4h') 
     
     print(f"Saving processed features to {output_path}...")
     df_features.to_csv(output_path)
     print("Done! Here is a sample:")
-    print(df_features[['log_return', 'volatility', 'volume_trend']].head())
+    print(df_features[['log_return', 'volatility', 'trend_distance']].head())
 
 if __name__ == "__main__":
     main()

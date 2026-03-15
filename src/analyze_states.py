@@ -10,7 +10,7 @@ def main():
     # Model means are in the scaled feature space. Let's convert them back to original scale.
     original_means = scaler.inverse_transform(model.means_)
     
-    features = ['log_return', 'volatility', 'volume_trend']
+    features = ['log_return', 'volatility', 'trend_distance']
     df_means = pd.DataFrame(original_means, columns=features)
     
     # Let's also grab the variances for each state (the diagonal of the covariance matrix)
@@ -29,7 +29,7 @@ def main():
     print("="*50)
     # Convert log return to percentage for better readability
     df_means['return_pct_per_hr'] = (np.exp(df_means['log_return']) - 1) * 100
-    print(df_means[['return_pct_per_hr', 'volatility', 'volume_trend']])
+    print(df_means[['return_pct_per_hr', 'volatility', 'trend_distance']])
     
     print("\n" + "="*50)
     print("State Persistence (Probability of staying in the same state next hour)")
