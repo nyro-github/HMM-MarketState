@@ -1,84 +1,60 @@
-import sqlite3
+﻿import sqlite3
 import pandas as pd
 import numpy as np
 import os
 
 def load_data(db_path, table_name='klines_1m'):
-    """Load raw OHLCV data from SQLite database."""
     print(f"Loading data from {table_name}...")
     conn = sqlite3.connect(db_path)
-    # Query opening time, OHLCV
-    query = f"""
-    SELECT open_time, open, high, low, close, volume 
-    FROM {table_name}
-    ORDER BY open_time ASC
-    """
+    query = f"SELECT open_time, open, high, low, close, volume FROM {table_name} ORDER BY open_time ASC"
     df = pd.read_sql_query(query, conn)
     conn.close()
     
-    # Convert timestamps
     df['open_time'] = pd.to_datetime(df['open_time'], unit='ms')
     df.set_index('open_time', inplace=True)
-    
-    # Convert numeric columns
     cols = ['open', 'high', 'low', 'close', 'volume']
     df[cols] = df[cols].apply(pd.to_numeric, errors='coerce')
-    
     return df
 
-def process_features(df, resample_freq='1h'):
-    """Resample and calculate log returns, volatility, and volume trends."""
-    print(f"Resampling data to {resample_freq}...")
+def process_macro(df):
+    print("Building Macro Features (4H)...")
+    agg = {'open': 'first', 'high': 'max', 'low': 'min','close': 'last', 'volume': 'sum'}
+    df_4h = df.resample('4h').agg(agg).dropna()
     
-    # Define how to aggregate OHLCV data during resampling
-    aggregation = {
-        'open': 'first',
-        'high': 'max',
-        'low': 'min',
-        'close': 'last',
-        'volume': 'sum'
-    }
+    df_4h['log_return'] = np.log(df_4h['close'] / df_4h['close'].shift(1))
+    df_4h['volatility'] = df_4h['log_return'].rolling(window=42).std()
+    df_4h['sma_200'] = df_4h['close'].rolling(window=200).mean()
+    df_4h['trend_distance'] = np.log(df_4h['close'] / df_4h['sma_200'])
     
-    df_resampled = df.resample(resample_freq).agg(aggregation)
-    df_resampled.dropna(inplace=True)
+    return df_4h.dropna()
+
+def process_micro(df):
+    print("Building Micro Features (1H)...")
+    agg = {'open': 'first', 'high': 'max', 'low': 'min','close': 'last', 'volume': 'sum'}
+    df_1h = df.resample('1h').agg(agg).dropna()
     
-    print("Calculating features...")
+    df_1h['log_return'] = np.log(df_1h['close'] / df_1h['close'].shift(1))
+    df_1h['volatility'] = df_1h['log_return'].rolling(window=24).std()
     
-    # 1. Log Returns (Fast response direction)
-    df_resampled['log_return'] = np.log(df_resampled['close'] / df_resampled['close'].shift(1))
+    df_1h['volume_ma'] = df_1h['volume'].rolling(window=24).mean()
+    df_1h['volume_trend'] = df_1h['volume'] / (df_1h['volume_ma'] + 1e-8)
     
-    # 2. Realized Volatility 
-    # Shortened to a rolling 48-hour window (12 periods if resampled to 4h)
-    volatility_window = 12
-    df_resampled['volatility'] = df_resampled['log_return'].rolling(window=volatility_window).std()
-    
-    # 3. Macro Trend Indicator (Distance from 100 SMA)
-    # Using a 100-period Simple Moving Average on the 4H chart (roughly 16.6 days)
-    sma_window = 100
-    df_resampled['sma_100'] = df_resampled['close'].rolling(window=sma_window).mean()
-    # Log distance from SMA (positive means Bull Trend, negative means Bear Trend)
-    df_resampled['trend_distance'] = np.log(df_resampled['close'] / df_resampled['sma_100'])
-    
-    # Drop rows with NaNs originating from the long 200-period SMA requirement
-    df_resampled.dropna(inplace=True)
-    
-    return df_resampled
+    return df_1h.dropna()
 
 def main():
     db_path = os.path.join('data', 'raw', 'BTCUSDT.db')
-    output_path = os.path.join('data', 'processed', 'BTCUSDT_features.csv')
+    out_macro = os.path.join('data', 'processed', 'BTCUSDT_macro.csv')
+    out_micro = os.path.join('data', 'processed', 'BTCUSDT_micro.csv')
     
-    if not os.path.exists(db_path):
-        print(f"Error: Database not found at {db_path}")
-        return
-        
     df = load_data(db_path)
-    df_features = process_features(df, resample_freq='4h') 
     
-    print(f"Saving processed features to {output_path}...")
-    df_features.to_csv(output_path)
-    print("Done! Here is a sample:")
-    print(df_features[['log_return', 'volatility', 'trend_distance']].head())
+    df_macro = process_macro(df)
+    df_macro.to_csv(out_macro)
+    print(f"Macro 4H dataset saved. Shape: {df_macro.shape}")
+    
+    df_micro = process_micro(df)
+    df_micro.to_csv(out_micro)
+    print(f"Micro 1H dataset saved. Shape: {df_micro.shape}")
 
 if __name__ == "__main__":
     main()
